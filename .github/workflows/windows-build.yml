@@ -105,9 +105,10 @@ jobs:
           retention-days: 7
 
       # 实跑测试：在这台机器的桌面上真的把程序开起来，由脚本代替人去点（见 windows/src/LiveTest.cs）。
-      # 开始跳 → 换四个模式 → 跳舞中换语言、换数量 → 按 Esc / 「恢复桌面」/ 点桌面 各恢复一次。
-      # 「算失败」的只有安全相关的几条：能开始、能恢复、恢复后舞台窗口没了、每个桌面图标的位置和开始前一样。
-      # 其余（舞台是不是正好垫在桌面图标上面、模拟的 Esc 有没有生效、画面比对）只做记录。
+      # 像人一样逐行操作控制窗口：开始、模式、自动切换、篮球、跟音乐、速度、幅度、数量、语言、暂停 / 继续、
+      # 图标名称、录屏隐藏——每一行都核对「后台真的照办了」和「窗口上显示对了」；再用 Esc / 「恢复桌面」/ 点桌面 各恢复一次。
+      # 「算失败」的：每一行的衔接，以及安全相关的几条（能开始、能恢复、恢复后舞台窗口没了、每个桌面图标的位置和开始前一样）。
+      # 只做记录的：舞台是不是正好垫在桌面图标上面、模拟的按键和鼠标有没有生效、恢复前后的画面比对。
       # 这台机器是服务器版 Windows，和 Windows 11 同一代；它不能代替在真的 Windows 11 电脑上试，
       # 也测不了声音（没有在放歌）和第一次打开时的安全提示。
       - name: Live test (really start dancing, then restore three ways)
@@ -118,9 +119,15 @@ jobs:
           # 这样截屏里能看到图标真的在跳，「舞台盖住了桌面」「恢复后画面和开始前一样」也能在整个桌面上核对。
           # （只是这台测试机上的操作；程序本身不会去动别的窗口。）
           try { (New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep -Seconds 2 } catch { "MinimizeAll failed: $_" }
+          # 这台测试机的桌面上只有 6 个图标。往它的桌面放 20 个小文件，凑成 26 个，像一台真的在用的电脑：
+          # 这样「数量」拖到 12 时，才会出现「12 个在跳、其余桌面图标留在原位」的情况（真机上出过问题的就是这一种）。
+          # （这是测试流程在这台一次性的测试机上做的；程序本身从不往桌面放任何文件。）
+          $desk = [Environment]::GetFolderPath('Desktop')
+          1..20 | ForEach-Object { Set-Content -Path (Join-Path $desk ("test-icon-{0:D2}.txt" -f $_)) -Value "test" }
+          Start-Sleep -Seconds 4
           $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest', 'livetest-out' -PassThru
           $null = $p.Handle
-          if ($p.WaitForExit(200000)) { $code = $p.ExitCode } else { "200 秒没跑完，结束它"; Stop-Process -Id $p.Id -Force; $code = 2 }
+          if ($p.WaitForExit(300000)) { $code = $p.ExitCode } else { "300 秒没跑完，结束它"; Stop-Process -Id $p.Id -Force; $code = 2 }
           if (Test-Path livetest-out/livetest.txt) {
             Get-Content livetest-out/livetest.txt -Encoding UTF8
             "### Live test`n`n``````" >> $env:GITHUB_STEP_SUMMARY

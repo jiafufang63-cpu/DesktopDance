@@ -255,6 +255,27 @@ namespace DesktopDance
         /// <summary>只给实跑测试用：和用户在「语言」下拉里选了一项是同一条路。</summary>
         public void SelfTestSwitchLanguage(Lang lang) => SetLanguage(lang);
 
+        /// <summary>只给实跑测试用：窗口上真正的那些控件。测试像人一样去点、去选、去拖它们，再看程序有没有照办。</summary>
+        public sealed class TestHandles
+        {
+            public Button Start = null!, Pause = null!, Restore = null!;
+            public ComboBox Mode = null!, Ball = null!, Language = null!;
+            public CheckBox Auto = null!, FollowMusic = null!, Names = null!, Hide = null!;
+            public Slider Speed = null!, Amp = null!, Count = null!;
+            public TextBlock CountLabel = null!, Status = null!;
+            public Settings Settings = null!;
+        }
+
+        public TestHandles SelfTestHandles() => new TestHandles
+        {
+            Start = startBtn, Pause = pauseBtn, Restore = restoreBtn,
+            Mode = modeBox, Ball = ballBox, Language = langBox,
+            Auto = autoChk, FollowMusic = sysChk, Names = labelChk, Hide = hideChk,
+            Speed = speedSlider, Amp = ampSlider, Count = countSlider,
+            CountLabel = countLabel, Status = status,
+            Settings = settings,
+        };
+
         /// <summary>放在主屏左下角（任务栏上方），不挡队形。</summary>
         void PlaceBottomLeft()
         {

@@ -6,6 +6,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,15 +18,17 @@ namespace DesktopDance
     /// 实跑测试（GitHub 上自动构建时会跑；自己也可以跑）：和平时一样把程序开起来，然后由脚本代替人去点。
     ///
     ///   DesktopDance.exe --livetest 输出文件夹
-    ///       开始跳 → 换四个模式 → 跳舞中换语言、换数量 → 用三种方式各恢复一次（按 Esc、「恢复桌面」、点桌面），
-    ///       每次恢复后核对：舞台窗口没了、每个桌面图标的位置和开始前一样。结果写进 livetest.txt，并留下截屏。
+    ///       像人一样逐行操作控制窗口上的每个控件（开始、模式、自动切换、篮球、跟音乐、速度、幅度、数量、语言、
+    ///       暂停 / 继续、图标名称、录屏隐藏），每一行都核对两件事：后台（场上实际的情况）真的跟着变了，窗口上显示的也对。
+    ///       然后用三种方式各恢复一次（按 Esc、「恢复桌面」、点桌面），每次恢复后核对：舞台窗口没了、
+    ///       每个桌面图标的位置和开始前一样。结果写进 livetest.txt，并留下截屏。
     ///   DesktopDance.exe --livetest-hold 输出文件夹
     ///       开始跳，然后一直跳着不动，等外面把这个进程强制结束（模拟任务管理器里的「结束任务」）。
     ///   DesktopDance.exe --livetest-after 输出文件夹
     ///       上面那个进程被强制结束之后运行：核对舞台窗口没了、图标位置没变。
     ///
-    /// 「算失败」的只有安全相关的几条：能开始、能恢复、恢复后舞台窗口没了、图标位置没变。
-    /// 其余（舞台是不是正好垫在桌面图标上面、模拟的 Esc 有没有生效、画面比对）只做记录，因为它们取决于跑测试的那台机器。
+    /// 「算失败」的：每一行「控件 → 后台 → 显示」的衔接，以及安全相关的几条（能开始、能恢复、恢复后舞台窗口没了、图标位置没变）。
+    /// 只做记录的：舞台是不是正好垫在桌面图标上面、模拟的按键和鼠标有没有生效、恢复前后的画面比对——它们取决于跑测试的那台机器。
     ///
     /// 注意：只有这三个测试模式会截屏、会模拟按键和鼠标点击；平时运行的程序不做这些事。
     /// 测试期间不写设置文件（Settings.NoSave）。
@@ -39,6 +43,9 @@ namespace DesktopDance
         readonly string outDir;
         readonly bool hold;
         readonly Report rep;
+        PanelWindow.TestHandles ui = null!;                 // 窗口上真正的控件（RunFull 一开始取）
+        RECT workArea;
+        int realClicks, fallbackClicks;
         public int ExitCode { get; private set; } = 2;      // 脚本没跑完就退出 = 2
 
         LiveTest(Application app, DanceController c, PanelWindow panel, string outDir, bool hold)
@@ -55,7 +62,7 @@ namespace DesktopDance
             // 保险：脚本卡住的话，到点直接结束进程（舞台窗口属于本进程，进程没了它就没了）
             var watchdog = new Thread(() =>
             {
-                Thread.Sleep(hold ? 200000 : 170000);
+                Thread.Sleep(hold ? 200000 : 270000);
                 t.rep.Fail("超时：测试脚本没有在规定时间内跑完，直接结束进程");
                 CopyLog(outDir);
                 Environment.Exit(2);
@@ -103,11 +110,18 @@ namespace DesktopDance
             int deskPoints = probesBefore.FindAll(p => p.IsDesktop).Count;
             rep.Note("取了 " + probesBefore.Count + " 个探测点，其中 " + deskPoints + " 个点下面是桌面，其余是别的窗口：" + Summary(probesBefore));
 
-            // ---------- 第一轮：开始 → 四个模式 → 换语言 → 换数量 → 按 Esc ----------
+            // ---------- 第一轮：像人一样逐行操作控制窗口，每一行都核对「后台真的照办了」和「窗口上显示对了」 ----------
             rep.Line("");
-            rep.Line("== 第一轮：开始跳，最后按 Esc ==");
-            c.Start();
-            bool running = await WaitUntil(() => c.State == DanceState.Running, 45);
+            rep.Line("== 第一轮：逐行操作控制窗口（按钮和勾选项用鼠标真的点；下拉和滑块直接选 / 拖到某个值），最后按 Esc ==");
+            ui = panel.SelfTestHandles();
+            workArea = work;
+            rep.Check(ui.Start.IsEnabled && !ui.Pause.IsEnabled && !ui.Restore.IsEnabled, "就绪时：「开始」能点，「暂停」「恢复桌面」是灰的");
+            rep.Check(ui.Status.Text.Contains(L.T("就绪", "Ready")), "就绪时：状态文字写着「就绪」");
+            rep.Check(ui.CountLabel.Text == c.TargetCount.ToString() && (int)Math.Round(ui.Count.Value) == c.TargetCount,
+                      "就绪时：「数量」滑块、旁边的数字和后台的数量一致（" + c.TargetCount + "）");
+
+            bool started = await Press(ui.Start, null, () => c.State != DanceState.Idle);
+            bool running = started && await WaitUntil(() => c.State == DanceState.Running, 45);
             rep.Check(running, "点「开始」后进入跳舞状态");
             if (!running) { rep.Note("状态文字：" + OneLine(c.StatusText)); c.EmergencyRestore(); ExitCode = 1; return; }
             await Task.Delay(3500);
@@ -116,6 +130,9 @@ namespace DesktopDance
             rep.Note("舞台窗口层级（程序自己的检查）：" + c.StageLayerNote);
             rep.Note("帧率 " + c.Fps + " fps，Esc 热键" + (c.HotKeys.EscapeRegistered ? "已注册" : "没注册上") + "，" + c.AudioDebug);
             rep.Note("状态文字：" + OneLine(c.StatusText));
+            rep.Check(!ui.Start.IsEnabled && ui.Pause.IsEnabled && ui.Restore.IsEnabled, "跳舞时：「开始」变灰，「暂停」「恢复桌面」能点");
+            rep.Check(ui.Status.Text.Contains(L.T("跳舞中", "Dancing")), "跳舞时：状态文字写着「跳舞中」");
+            rep.Check(c.DancerCount == c.TargetCount, "跳舞时：场上跳舞的图标数（" + c.DancerCount + "）等于「数量」（" + c.TargetCount + "）；桌面图标 " + c.DesktopCount + " 个，借来 " + c.GuestCount + " 个");
             LayerCheck(probesBefore, stage, "打篮球");
             BitmapSource? shotDance = Shot("2-basketball.png");
             if (shotBefore != null && shotDance != null)
@@ -124,35 +141,14 @@ namespace DesktopDance
                 rep.Soft(d > 0.002, "跳舞时的画面和开始前不一样（工作区里 " + (d * 100).ToString("0.00") + "% 的像素变了；一点没变说明舞台没露出来）");
             }
 
-            int shotNo = 3;
-            foreach (DanceMode m in DanceModes.All)
-            {
-                if (m == DanceMode.Figure) continue;
-                c.Mode = m;
-                await Task.Delay(2600);
-                rep.Check(c.State == DanceState.Running, "切到「" + DanceModes.LogName(m) + "」后还在跳（" + c.Fps + " fps）");
-                Shot(shotNo + "-" + m.ToString().ToLowerInvariant() + ".png");
-                shotNo++;
-            }
-            c.Mode = DanceMode.Figure;
-            await Task.Delay(1500);
-
-            // 跳舞中换语言：只换字，不能打断跳舞
-            Lang original = L.Current, other = original == Lang.Zh ? Lang.En : Lang.Zh;
-            panel.SelfTestSwitchLanguage(other);
-            await Task.Delay(1500);
-            rep.Check(c.State == DanceState.Running && c.Fps > 0, "跳舞中把语言换成" + (other == Lang.Zh ? "中文" : " English") + "：还在跳（" + c.Fps + " fps）");
-            rep.Note("换语言后的状态文字：" + OneLine(c.StatusText));
-            Shot("6-language-switched.png");
-            panel.SelfTestSwitchLanguage(original);
-            await Task.Delay(600);
-
-            // 跳舞中改数量：过一两秒按新数量重排
-            c.TargetCount = 24;
-            await Task.Delay(4500);
-            rep.Check(c.State == DanceState.Running, "跳舞中把数量改成 24 后还在跳");
-            rep.Note("改数量后的状态文字：" + OneLine(c.StatusText));
-            Shot("7-count-24.png");
+            await RowMode();
+            await RowAutoSwitch();
+            await RowBall();
+            await RowFollowMusicSpeedAmp();
+            await RowCount();
+            await RowLanguage();
+            await RowPauseNamesHide();
+            rep.Soft(fallbackClicks == 0, "鼠标点击：" + realClicks + " 次真的点中并生效" + (fallbackClicks > 0 ? "，另有 " + fallbackClicks + " 次没点中、改成直接触发那个控件的点击事件" : ""));
 
             // 按 Esc（模拟真的按键，走全局热键那条路）
             TestNative.keybd_event(0x1B, 0, 0, UIntPtr.Zero);
@@ -162,7 +158,7 @@ namespace DesktopDance
             if (!escWorked) c.EmergencyRestore();
             await AfterRestore(before, "按 Esc 后");
             await Task.Delay(700);
-            BitmapSource? shotAfter1 = Shot("8-after-esc.png");
+            BitmapSource? shotAfter1 = Shot("11-after-esc.png");
             if (shotBefore != null && shotAfter1 != null)
             {
                 double d = Diff(shotBefore, shotAfter1, work, panelRect, PanelRect());
@@ -172,22 +168,23 @@ namespace DesktopDance
             // ---------- 第二轮：「恢复桌面」按钮（图标飞回原位再撤舞台）----------
             rep.Line("");
             rep.Line("== 第二轮：用「恢复桌面」停止 ==");
-            c.TargetCount = 48;
-            c.Start();
-            running = await WaitUntil(() => c.State == DanceState.Running, 45);
-            rep.Check(running, "第二次开始后进入跳舞状态");
+            started = await Press(ui.Start, null, () => c.State != DanceState.Idle);
+            running = started && await WaitUntil(() => c.State == DanceState.Running, 45);
+            rep.Check(running, "第二次点「开始」后进入跳舞状态");
             await Task.Delay(2500);
-            c.Stop(true);
+            await Press(ui.Restore, null, () => c.State == DanceState.Stopping || c.State == DanceState.Idle);
             bool idle = await WaitUntil(() => c.State == DanceState.Idle, 8);
-            rep.Check(idle, "「恢复桌面」后回到就绪状态");
+            rep.Check(idle, "点「恢复桌面」后图标飞回原位，回到就绪状态");
+            rep.Check(ui.Start.IsEnabled && !ui.Pause.IsEnabled && !ui.Restore.IsEnabled && Txt(ui.Start.Content) == L.T("开始蹦迪", "Start"),
+                      "恢复后：按钮回到就绪时的样子");
             if (!idle) c.EmergencyRestore();
             await AfterRestore(before, "「恢复桌面」后");
 
             // ---------- 第三轮：在桌面上点一下 ----------
             rep.Line("");
             rep.Line("== 第三轮：在桌面上点一下停止 ==");
-            c.Start();
-            running = await WaitUntil(() => c.State == DanceState.Running, 45);
+            started = await Press(ui.Start, null, () => c.State != DanceState.Idle);
+            running = started && await WaitUntil(() => c.State == DanceState.Running, 45);
             rep.Check(running, "第三次开始后进入跳舞状态");
             await Task.Delay(2500);
             stage = Native.FindWindow(null, StageTitle);
@@ -209,7 +206,7 @@ namespace DesktopDance
             await WaitUntil(() => c.State == DanceState.Idle, 5);
             await AfterRestore(before, "点桌面后");
             await Task.Delay(700);
-            BitmapSource? shotEnd = Shot("9-after.png");
+            BitmapSource? shotEnd = Shot("12-after.png");
             if (shotBefore != null && shotEnd != null)
             {
                 double d = Diff(shotBefore, shotEnd, work, panelRect, PanelRect());
@@ -219,6 +216,290 @@ namespace DesktopDance
             rep.Line("");
             rep.Line(rep.Failed ? "结论：有失败项。" : "结论：安全相关的项全部通过（能开始、能恢复、恢复后舞台窗口没了、图标位置没变）。带「记录」的项见上，不算通过或失败。");
             ExitCode = rep.Failed ? 1 : 0;
+        }
+
+        // ================= 逐行操作控制窗口 =================
+        // 每一行的套路都一样：在真窗口上动那个控件 → 核对后台（场上实际的情况）真的变了 → 核对窗口上显示的也对。
+        // 「算失败」的是这两条衔接；鼠标点没点中只做记录（点不中时改成直接触发控件的点击事件，衔接照样查）。
+
+        static string Txt(object? content) => content as string ?? (content as TextBlock)?.Text ?? "";
+
+        /// <summary>把鼠标挪到控件上，真的按下、松开一次。</summary>
+        async Task MouseClick(FrameworkElement el)
+        {
+            Point local = el is ToggleButton ? new Point(8, el.ActualHeight / 2) : new Point(el.ActualWidth / 2, el.ActualHeight / 2);
+            Point scr = el.PointToScreen(local);
+            TestNative.SetCursorPos((int)Math.Round(scr.X), (int)Math.Round(scr.Y));
+            await Task.Delay(150);
+            TestNative.mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+            await Task.Delay(40);
+            TestNative.mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+            await Task.Delay(120);
+        }
+
+        /// <summary>
+        /// 像人一样用鼠标点一下按钮或勾选项。took = 「程序确实照办了」。
+        /// 点了两次都没反应（测试机不接受模拟鼠标）时，改成直接触发这个控件的点击事件——
+        /// 走的仍然是控件上接的那段处理代码，所以「控件 → 后台」的衔接照样查得到。
+        /// </summary>
+        async Task<bool> Press(ButtonBase b, bool? wantChecked, Func<bool> took, double wait = 2)
+        {
+            for (int attempt = 0; attempt < 2 && b.IsEnabled; attempt++)
+            {
+                await MouseClick(b);
+                if (await WaitUntil(took, wait)) { realClicks++; return true; }
+            }
+            fallbackClicks++;
+            if (b is ToggleButton t && wantChecked != null) t.IsChecked = wantChecked;
+            b.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return await WaitUntil(took, wait);
+        }
+
+        async Task RowMode()
+        {
+            rep.Line("-- 模式 --");
+            int shotNo = 3;
+            for (int i = 0; i < DanceModes.All.Length; i++)
+            {
+                DanceMode m = DanceModes.All[i];
+                if (m == DanceMode.Figure) continue;
+                ui.Mode.SelectedIndex = i;
+                await Task.Delay(2600);
+                rep.Check(c.Mode == m && c.State == DanceState.Running, "「模式」选「" + DanceModes.LogName(m) + "」：后台换成了这个模式，还在跳（" + c.Fps + " fps）");
+                Shot(shotNo + "-" + m.ToString().ToLowerInvariant() + ".png");
+                shotNo++;
+            }
+            ui.Mode.SelectedIndex = Array.IndexOf(DanceModes.All, DanceMode.Figure);
+            await Task.Delay(1200);
+            rep.Check(c.Mode == DanceMode.Figure, "「模式」选回「打篮球」：后台换回来了");
+        }
+
+        async Task RowAutoSwitch()
+        {
+            rep.Line("-- 自动切换 --");
+            ui.Mode.SelectedIndex = Array.IndexOf(DanceModes.All, DanceMode.Groove);
+            await Task.Delay(500);
+            bool on = await Press(ui.Auto, true, () => c.AutoSwitch);
+            rep.Check(on, "勾上「自动切换」：后台开了自动切换");
+            double t0 = Clock.Now;
+            bool switched = await WaitUntil(() => c.Mode != DanceMode.Groove, 20);
+            rep.Check(switched, "勾上之后不用管它，" + (Clock.Now - t0).ToString("0") + " 秒后自己从「律动」换到了「" + DanceModes.LogName(c.Mode) + "」");
+            await Task.Delay(400);
+            rep.Check(ui.Mode.SelectedIndex == Array.IndexOf(DanceModes.All, c.Mode), "自动换了模式后：「模式」下拉显示的也跟着变了");
+            bool off = await Press(ui.Auto, false, () => !c.AutoSwitch);
+            rep.Check(off, "去掉「自动切换」的勾：后台关了");
+            ui.Mode.SelectedIndex = Array.IndexOf(DanceModes.All, DanceMode.Figure);
+            await Task.Delay(1200);
+        }
+
+        async Task RowBall()
+        {
+            rep.Line("-- 篮球 --");
+            if (ui.Ball.Items.Count < 3) { rep.Note("「篮球」下拉里可选的图标不到两个，这一行没法试"); return; }
+            string was = c.BallInUse;
+            ui.Ball.SelectedIndex = 2;
+            string want = ui.Ball.SelectedItem as string ?? "";
+            bool ok = await WaitUntil(() => c.BallName == want && DesktopLoader.Matches(c.BallInUse, want), 8);
+            rep.Check(ok, "「篮球」选「" + want + "」：场上当球的图标换成了「" + c.BallInUse + "」（原来是「" + was + "」）");
+            ui.Ball.SelectedIndex = 0;
+            ok = await WaitUntil(() => c.BallName.Length == 0, 3);
+            await Task.Delay(600);
+            rep.Check(ok, "「篮球」选回「自动」：后台改回自动，现在当球的是「" + c.BallInUse + "」");
+        }
+
+        /// <summary>这段时间里节拍每秒走几拍。</summary>
+        async Task<double> BeatRate(int ms)
+        {
+            double b0 = c.BeatNow, t0 = Clock.Now;
+            await Task.Delay(ms);
+            return (c.BeatNow - b0) / Math.Max(0.001, Clock.Now - t0);
+        }
+
+        /// <summary>这段时间里，每个跳舞的图标在屏幕上来回走过的范围（横向 + 纵向，单位是点），取平均。</summary>
+        async Task<double> Motion(double seconds)
+        {
+            int n = c.DancerCount;
+            if (n <= 0) return 0;
+            var lo = new Vec[n];
+            var hi = new Vec[n];
+            for (int i = 0; i < n; i++) { lo[i] = new Vec(1e9, 1e9); hi[i] = new Vec(-1e9, -1e9); }
+            double end = Clock.Now + seconds;
+            while (Clock.Now < end)
+            {
+                Pose[] poses = c.CurrentPoses;
+                for (int i = 0; i < n && i < poses.Length; i++)
+                {
+                    Vec q = poses[i].P;
+                    lo[i] = new Vec(Math.Min(lo[i].X, q.X), Math.Min(lo[i].Y, q.Y));
+                    hi[i] = new Vec(Math.Max(hi[i].X, q.X), Math.Max(hi[i].Y, q.Y));
+                }
+                await Task.Delay(30);
+            }
+            double sum = 0;
+            int counted = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (hi[i].X < lo[i].X) continue;
+                sum += (hi[i].X - lo[i].X) + (hi[i].Y - lo[i].Y);
+                counted++;
+            }
+            return counted == 0 ? 0 : sum / counted;
+        }
+
+        async Task RowFollowMusicSpeedAmp()
+        {
+            rep.Line("-- 跟着电脑正在播放的音乐跳 --");
+            bool was = c.UseSystemAudio;
+            bool ok = await Press(ui.FollowMusic, !was, () => c.UseSystemAudio == !was);
+            rep.Check(ok, (was ? "去掉" : "勾上") + "「跟着音乐跳」：后台" + (was ? "不再听系统声音" : "开始听系统声音"));
+            // 速度、幅度在「不跟音乐」的时候量，这样节拍只由滑块决定，量出来的数才说明问题
+            if (c.UseSystemAudio) { await Press(ui.FollowMusic, false, () => !c.UseSystemAudio); }
+            await Task.Delay(900);
+            rep.Check(ui.Status.Text.Contains(L.T("内置节拍", "Built-in beat")), "不跟音乐时：状态文字写着「内置节拍」");
+
+            rep.Line("-- 速度 --");
+            ui.Speed.Value = 1;
+            await Task.Delay(400);
+            double r1 = await BeatRate(2500);
+            ui.Speed.Value = 2;
+            await Task.Delay(400);
+            double r2 = await BeatRate(2500);
+            rep.Check(Math.Abs(c.Speed - 2) < 1e-6 && r1 > 0.5 && r2 / r1 > 1.6 && r2 / r1 < 2.4,
+                      "「速度」拖到最右（2 倍）：节拍真的快了一倍（每秒 " + r1.ToString("0.00") + " 拍 → " + r2.ToString("0.00") + " 拍）");
+            ui.Speed.Value = 0.5;
+            await Task.Delay(400);
+            double r3 = await BeatRate(2500);
+            rep.Check(Math.Abs(c.Speed - 0.5) < 1e-6 && r1 > 0.5 && r3 / r1 > 0.4 && r3 / r1 < 0.62,
+                      "「速度」拖到最左（0.5 倍）：节拍真的慢了一半（每秒 " + r3.ToString("0.00") + " 拍）");
+            ui.Speed.Value = 1;
+
+            rep.Line("-- 幅度 --");
+            ui.Mode.SelectedIndex = Array.IndexOf(DanceModes.All, DanceMode.Groove);
+            await Task.Delay(1800);
+            ui.Amp.Value = 0.3;
+            await Task.Delay(500);
+            double m1 = await Motion(2.5);
+            ui.Amp.Value = 2;
+            await Task.Delay(500);
+            double m2 = await Motion(2.5);
+            rep.Check(Math.Abs(c.Amp - 2) < 1e-6 && m2 > m1 * 1.5,
+                      "「幅度」从最左拖到最右（律动模式下量）：图标的动作真的变大了（平均摆动范围 " + m1.ToString("0.0") + " 点 → " + m2.ToString("0.0") + " 点）");
+            Shot("6-groove-amp-max.png");
+            ui.Amp.Value = 1;
+            ui.Mode.SelectedIndex = Array.IndexOf(DanceModes.All, DanceMode.Figure);
+            await Task.Delay(1200);
+
+            if (was)
+            {
+                ok = await Press(ui.FollowMusic, true, () => c.UseSystemAudio);
+                rep.Check(ok, "重新勾上「跟着音乐跳」：后台又开始听系统声音");
+            }
+        }
+
+        async Task RowCount()
+        {
+            rep.Line("-- 数量（上次真机测出来的问题就在这一行：拖了滑块，场上的个数没跟着变）--");
+            foreach (int n in new[] { 12, 96, 48 })
+            {
+                ui.Count.Value = n;
+                bool ok = await WaitUntil(() => c.TargetCount == n && c.DancerCount == n && c.State == DanceState.Running, 12);
+                await Task.Delay(1500);
+                int stay = Math.Max(0, c.DesktopCount - n);
+                rep.Check(ok && c.Bystanders == stay,
+                          "「数量」拖到 " + n + "：场上真的是 " + c.DancerCount + " 个在跳，" + c.Bystanders + " 个桌面图标留在原位不动（桌面图标共 " + c.DesktopCount + " 个，借来的在跳 " + Math.Max(0, c.DancerCount - Math.Min(c.DesktopCount, c.DancerCount)) + " 个）");
+                rep.Check(ui.CountLabel.Text == n.ToString(), "「数量」拖到 " + n + "：滑块旁边的数字显示 " + ui.CountLabel.Text);
+                rep.Note("状态文字：" + OneLine(ui.Status.Text));
+                Shot("7-count-" + n + ".png");
+            }
+        }
+
+        async Task RowLanguage()
+        {
+            rep.Line("-- 语言 --");
+            Lang original = L.Current, other = original == Lang.Zh ? Lang.En : Lang.Zh;
+            ui.Language.SelectedIndex = other == Lang.Zh ? 0 : 1;
+            await Task.Delay(1500);
+            rep.Check(L.Current == other && c.State == DanceState.Running && c.Fps > 0, "「语言」选" + (other == Lang.Zh ? "中文" : " English") + "：换过去了，还在跳（" + c.Fps + " fps）");
+            rep.Check(Txt(ui.Pause.Content) == (other == Lang.Zh ? "暂停" : "Pause") && Txt(ui.Restore.Content) == (other == Lang.Zh ? "恢复桌面" : "Restore")
+                      && ui.Status.Text.Contains(other == Lang.Zh ? "跳舞中" : "Dancing") && (ui.Mode.SelectedItem as string ?? "") == (other == Lang.Zh ? "打篮球" : "Basketball"),
+                      "换语言后：按钮、模式名、状态文字都换成了" + (other == Lang.Zh ? "中文" : "英文"));
+            rep.Note("换语言后的状态文字：" + OneLine(ui.Status.Text));
+            Shot("8-language-switched.png");
+            ui.Language.SelectedIndex = original == Lang.Zh ? 0 : 1;
+            await Task.Delay(800);
+            rep.Check(L.Current == original && Txt(ui.Pause.Content) == (original == Lang.Zh ? "暂停" : "Pause"), "「语言」选回原来的：字换回来了");
+        }
+
+        async Task RowPauseNamesHide()
+        {
+            rep.Line("-- 暂停 / 继续 --");
+            BitmapSource? r1 = Capture();
+            await Task.Delay(700);
+            BitmapSource? r2 = Capture();
+            double moving = r1 != null && r2 != null ? Diff(r1, r2, workArea, PanelRect()) : -1;
+
+            bool ok = await Press(ui.Pause, null, () => c.State == DanceState.Paused);
+            rep.Check(ok, "点「暂停」：后台进入暂停");
+            await Task.Delay(500);
+            rep.Check(Txt(ui.Start.Content) == L.T("继续", "Resume") && ui.Start.IsEnabled && !ui.Pause.IsEnabled, "暂停时：「开始」按钮变成了「继续」并且能点，「暂停」变灰");
+            rep.Check(ui.Status.Text.Contains(L.T("已暂停", "Paused")), "暂停时：状态文字写着「已暂停」");
+            BitmapSource? p1 = Capture();
+            await Task.Delay(800);
+            BitmapSource? p2 = Capture();
+            if (p1 != null && p2 != null)
+            {
+                double still = Diff(p1, p2, workArea, PanelRect());
+                rep.Check(still < 0.0005, "暂停时画面真的定住了（隔 0.8 秒的两张截屏只有 " + (still * 100).ToString("0.000") + "% 的像素不同；跳舞时隔 0.7 秒是 " + (moving * 100).ToString("0.00") + "%）");
+            }
+            else rep.Note("截不到屏，没法核对「暂停时画面定住」");
+
+            rep.Line("-- 图标名称（趁暂停画面不动时比对）--");
+            bool namesWere = c.ShowLabels;
+            ok = await Press(ui.Names, !namesWere, () => c.ShowLabels == !namesWere);
+            rep.Check(ok, (namesWere ? "去掉" : "勾上") + "「图标名称」：后台照办了");
+            await Task.Delay(500);
+            BitmapSource? p3 = Capture();
+            if (p2 != null && p3 != null)
+            {
+                double changed = Diff(p2, p3, workArea, PanelRect());
+                rep.Check(changed > 0.0003, (namesWere ? "去掉" : "勾上") + "「图标名称」后：画面上的名字真的" + (namesWere ? "没了" : "出来了") + "（" + (changed * 100).ToString("0.00") + "% 的像素变了）");
+            }
+            Shot("9-paused-names-toggled.png");
+            ok = await Press(ui.Names, namesWere, () => c.ShowLabels == namesWere);
+            await Task.Delay(500);
+            BitmapSource? p4 = Capture();
+            if (p2 != null && p4 != null)
+            {
+                double back = Diff(p2, p4, workArea, PanelRect());
+                rep.Check(ok && back < 0.0005, "把「图标名称」改回去：画面和刚才一样（只有 " + (back * 100).ToString("0.000") + "% 的像素不同）");
+            }
+
+            rep.Line("-- 截屏 / 录屏时隐藏本窗口 --");
+            RECT pr = VisiblePanelRect();
+            BitmapSource? a = Capture();
+            ok = await Press(ui.Hide, true, () => ui.Settings.HidePanelFromCapture);
+            rep.Check(ok, "勾上「截屏 / 录屏时隐藏本窗口」：后台照办了");
+            await Task.Delay(700);
+            BitmapSource? b = Capture();
+            if (a != null && b != null)
+            {
+                double gone = Diff(a, b, pr);
+                rep.Soft(gone > 0.5, "勾上后截屏：控制窗口不在截屏里了（它那一块有 " + (gone * 100).ToString("0") + "% 的像素变了；系统太旧不支持时这一项不成立）");
+                Save(b, Path.Combine(outDir, "10-panel-hidden-from-capture.png"));
+            }
+            ok = await Press(ui.Hide, false, () => !ui.Settings.HidePanelFromCapture);
+            await Task.Delay(700);
+            BitmapSource? a2 = Capture();
+            if (a != null && a2 != null)
+            {
+                double back = Diff(a, a2, pr);
+                rep.Check(ok && back < 0.1, "去掉这个勾：控制窗口又能截到了");
+            }
+
+            ok = await Press(ui.Start, null, () => c.State == DanceState.Running);
+            rep.Check(ok, "点「继续」：接着跳");
+            await Task.Delay(800);
+            rep.Check(Txt(ui.Start.Content) == L.T("开始蹦迪", "Start") && !ui.Start.IsEnabled && ui.Pause.IsEnabled, "继续后：按钮回到跳舞时的样子");
         }
 
         /// <summary>

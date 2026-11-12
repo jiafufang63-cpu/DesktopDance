@@ -124,7 +124,7 @@ dotnet publish windows/DesktopDance.csproj -c Release -r win-x64 --self-containe
 | [src/Panel.cs](src/Panel.cs) | 控制窗口 |
 | [src/HotKeys.cs](src/HotKeys.cs) | `Esc` 热键 |
 | [src/SelfTest.cs](src/SelfTest.cs) | 自检（`DesktopDance.exe --selftest 输出文件夹`）：只算不开窗口 |
-| [src/LiveTest.cs](src/LiveTest.cs) | 实跑测试（`DesktopDance.exe --livetest 输出文件夹`）：真的开始跳、换模式、再用按 Esc / 「恢复桌面」/ 点桌面各恢复一次，每次核对舞台窗口没了、图标位置没变。只有这个测试模式会截屏和模拟按键、鼠标点击；平时运行的程序不做这些事 |
+| [src/LiveTest.cs](src/LiveTest.cs) | 实跑测试（`DesktopDance.exe --livetest 输出文件夹`）：像人一样逐行操作控制窗口上的每个控件（开始、模式、自动切换、篮球、跟音乐、速度、幅度、数量、语言、暂停、图标名称、录屏隐藏），每一行核对后台真的照办了、窗口上显示对了；再用按 Esc / 「恢复桌面」/ 点桌面各恢复一次，每次核对舞台窗口没了、图标位置没变。只有这个测试模式会截屏和模拟按键、鼠标点击；平时运行的程序不做这些事 |
 
 ## 致谢与许可证
 

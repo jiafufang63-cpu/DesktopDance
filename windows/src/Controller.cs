@@ -134,6 +134,19 @@ namespace DesktopDance
         public int Bpm => (int)M.Round(clock.Bpm);
         /// <summary>舞台窗口开出来后自己检查到的层级情况（中文，给日志和实跑测试看）。</summary>
         public string StageLayerNote => stage?.LayerNote ?? "";
+
+        // ---- 下面几个只给实跑测试看：场上「实际」的情况，不是设置值。
+        //      测试靠它们核对「窗口上动了某个控件之后，场上真的跟着变了」。只读。
+        /// <summary>现在有几个图标在跳。</summary>
+        public int DancerCount => dancerCount;
+        /// <summary>现在有几个桌面图标留在原位不动。</summary>
+        public int Bystanders => bystanders;
+        /// <summary>节拍走到第几拍了（一直往上涨；涨得快慢就是舞步快慢）。</summary>
+        public double BeatNow => clock.Beat;
+        /// <summary>现在场上当篮球的那个图标的名字。</summary>
+        public string BallInUse => choreo.BallIndex >= 0 && choreo.BallIndex < items.Count ? items[choreo.BallIndex].Name : "";
+        /// <summary>最近一帧每个图标画在哪（只读着用，别改）。</summary>
+        public Pose[] CurrentPoses => lastPoses;
         public int GuestCount => Math.Max(0, items.Count - DesktopCount);
 
         void SetState(DanceState s) { State = s; Changed?.Invoke(); }
