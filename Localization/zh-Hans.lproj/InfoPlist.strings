@@ -1,0 +1,6 @@
+/* 系统弹窗和访达里显示的文字（中文） */
+"CFBundleDisplayName" = "桌面图标跳舞";
+"NSHumanReadableCopyright" = "Copyright © 2026 Jennifer Fang. Noncommercial use only.";
+"NSDesktopFolderUsageDescription" = "读取桌面上有哪些文件，用它们的图标做跳舞动画。只读取图标和名字，不会改动任何文件。";
+"NSAppleEventsUsageDescription" = "向访达询问桌面图标的当前位置，让动画从真实位置出发，并在结束后核对图标是否都在原位。";
+"NSAudioCaptureUsageDescription" = "听电脑正在播放的音乐来打拍子，让图标跟着跳。只检测节拍，不录音、不保存、不上传。";

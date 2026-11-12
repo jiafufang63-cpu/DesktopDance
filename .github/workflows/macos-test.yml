@@ -1,0 +1,59 @@
+# 在不同版本的 macOS 和 Intel 机器上实际构建并运行一遍。
+# 只在手动触发时运行（仓库页面 → Actions → "macOS test" → Run workflow），
+# 免得每次推送都占用 macOS 机器。
+name: macOS test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS 14 的机器 GitHub 已经不提供了（会直接被取消），所以不在这里
+        os: [macos-15, macos-26, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show machine info
+        run: |
+          sw_vers
+          uname -m
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Logic self-check
+        run: build/DesktopDance.app/Contents/MacOS/DesktopDance --self-check
+
+      - name: Render the four modes off-screen
+        run: build/DesktopDance.app/Contents/MacOS/DesktopDance --render-test "$RUNNER_TEMP/render"
+
+      - name: Run the app for real (all four modes, then stop)
+        run: |
+          LOG="$HOME/Library/Application Support/DesktopDance/desktop-dance.log"
+          build/DesktopDance.app/Contents/MacOS/DesktopDance --autostart --background --no-system-audio \
+            --status-every 5 --script "24:mode=snake,27:mode=groove,30:mode=free,33:mode=figure,36:count=20,40:stop" --quit-after 46 &
+          sleep 52
+          echo "------ 日志 ------"
+          cat "$LOG" || true
+          echo "------ 检查 ------"
+          grep -q "开始：" "$LOG" || { echo "没有开始跳舞"; exit 1; }
+          grep -q "已恢复桌面" "$LOG" || { echo "没有正常恢复桌面"; exit 1; }
+          echo "通过"
+
+      - name: Upload renders and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-${{ matrix.os }}
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/render
+            ~/Library/Application Support/DesktopDance/desktop-dance.log

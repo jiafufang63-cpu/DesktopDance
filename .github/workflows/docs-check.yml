@@ -1,0 +1,21 @@
+name: Docs check
+
+# 英文说明里不许混进中文字或中文截图。改了说明或图片就自动检查一次。
+on:
+  push:
+    branches: [main]
+    paths: ["README.md", "docs/**", "tools/check-readme-en.py", ".github/workflows/docs-check.yml"]
+  pull_request:
+    paths: ["README.md", "docs/**", "tools/check-readme-en.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readme-en:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: English README must contain no Chinese
+        run: python3 tools/check-readme-en.py

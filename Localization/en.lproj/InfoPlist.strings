@@ -1,0 +1,6 @@
+/* Text shown in system prompts and in Finder (English) */
+"CFBundleDisplayName" = "DesktopDance";
+"NSHumanReadableCopyright" = "Copyright © 2026 Jennifer Fang. Noncommercial use only.";
+"NSDesktopFolderUsageDescription" = "DesktopDance reads which files are on your desktop so it can animate copies of their icons. It only reads icons and names and never changes any file.";
+"NSAppleEventsUsageDescription" = "DesktopDance asks Finder where your desktop icons are, so the animation starts from their real positions and can check afterwards that nothing moved.";
+"NSAudioCaptureUsageDescription" = "DesktopDance listens to the music your Mac is playing to find the beat. It only detects the beat; nothing is recorded, saved or uploaded.";

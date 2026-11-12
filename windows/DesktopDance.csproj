@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>DesktopDance</AssemblyName>
+    <RootNamespace>DesktopDance</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>DesktopDance</Product>
+    <AssemblyTitle>DesktopDance</AssemblyTitle>
+    <Authors>Jennifer Fang</Authors>
+    <Company>Jennifer Fang</Company>
+    <Copyright>Copyright (c) 2026 Jennifer Fang. Noncommercial use only.</Copyright>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- 让非 Windows 的机器也能做编译检查；真正的 exe 由 GitHub Actions 在 Windows 上生成 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en;zh-Hans</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 系统声音回环采集（WASAPI loopback）。MIT 许可。 -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 打篮球的动作数据：和 Mac 版用同一个文件，构建时嵌进 exe -->
+    <EmbeddedResource Include="..\motion\basketball-motion.json" LogicalName="basketball-motion.json" Link="basketball-motion.json" />
+  </ItemGroup>
+
+</Project>

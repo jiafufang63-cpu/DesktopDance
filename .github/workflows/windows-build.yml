@@ -1,0 +1,126 @@
+# 在 GitHub 的 Windows 机器上生成 Windows 版 exe。不需要自己有 Windows 构建环境，也不需要任何额外的密钥。
+#
+# - 每次推送到 main（改了 windows/ 或动作数据时）、或在 Actions 页面手动点 Run workflow：
+#   生成 exe，跑一遍自检，结果放在这次运行页面底部的 Artifacts 里（DesktopDance-win）。
+#   自检通过后，还会把 exe 换到测试版 Release（win-test-1）上——README 里的下载按钮指的就是它，
+#   所以按钮给出的永远是 main 上最新的一版。
+# - 推送 v 开头的标签（例如 v0.1.0）：同上，并且把 exe 以 DesktopDance-win.exe 这个名字挂到同名 Release 上。
+#   于是固定下载地址生效：
+#   https://github.com/<账号>/<仓库>/releases/latest/download/DesktopDance-win.exe
+name: Windows 版构建
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'windows/**'
+      - 'motion/**'
+      - '.github/workflows/windows-build.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'motion/**'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 只用来在打标签时创建 Release 并上传 exe
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 生成单文件 exe（自带运行库，不用安装 .NET）
+        shell: pwsh
+        run: >
+          dotnet publish windows/DesktopDance.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -o publish
+
+      - name: 改名并算校验值
+        shell: pwsh
+        run: |
+          Copy-Item publish/DesktopDance.exe DesktopDance-win.exe
+          $f = Get-Item DesktopDance-win.exe
+          "大小：{0:N1} MB" -f ($f.Length / 1MB)
+          $hash = (Get-FileHash DesktopDance-win.exe -Algorithm SHA256).Hash
+          "SHA256：$hash"
+          "### Windows 版构建完成`n`n- 大小：{0:N1} MB`n- SHA256：``{1}``" -f ($f.Length / 1MB), $hash >> $env:GITHUB_STEP_SUMMARY
+
+      - name: 上传 exe（Artifacts）
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopDance-win
+          path: DesktopDance-win.exe
+          if-no-files-found: error
+          retention-days: 7   # 私有仓库的存储额度很小（免费 500 MB），测试用的 exe 留一周就够
+
+      # 自检：纯计算部分（动作数据、四种队形、节拍检测）必须通过；
+      # 读桌面 / 取图标 / 铺壁纸 / 离屏画图只做记录。窗口、热键、声音不在这里测。
+      - name: 自检
+        id: selftest
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--selftest', 'selftest-out' -Wait -PassThru
+          if (Test-Path selftest-out/selftest.txt) {
+            Get-Content selftest-out/selftest.txt -Encoding UTF8
+            "### 自检`n`n``````" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content selftest-out/selftest.txt -Encoding UTF8 >> $env:GITHUB_STEP_SUMMARY
+            "``````" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "没有生成自检报告（程序可能没能启动）"
+          }
+          "退出码：$($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: 上传自检报告和渲染图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest
+          path: selftest-out
+          if-no-files-found: warn
+          retention-days: 7
+
+      # README 的「下载 Windows 版」按钮指向 win-test-1 这个 Release。main 上每次构建并自检通过后，
+      # 用新的 exe 换掉里面那个旧的。不想自动更新时，删掉这一步即可。
+      - name: 更新测试版下载（win-test-1）
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload win-test-1 DesktopDance-win.exe --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: 挂到 Release（只在推送 v 标签时）
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo "${{ github.repository }}" --title "$tag" --generate-notes
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          gh release upload $tag DesktopDance-win.exe --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
