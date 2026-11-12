@@ -443,13 +443,28 @@ namespace DesktopDance
             await Task.Delay(500);
             rep.Check(Txt(ui.Start.Content) == L.T("继续", "Resume") && ui.Start.IsEnabled && !ui.Pause.IsEnabled, "暂停时：「开始」按钮变成了「继续」并且能点，「暂停」变灰");
             rep.Check(ui.Status.Text.Contains(L.T("已暂停", "Paused")), "暂停时：状态文字写着「已暂停」");
+            // 连截三张：点下暂停 0.5 秒时一张（p0），之后每隔 0.8 秒各一张（p1、p2）。
+            // 「定住了」看的是 p1 和 p2；p0 和 p1 的差别单独记下来，并指出差在屏幕上哪一块，方便分辨是什么在变。
+            BitmapSource? p0 = Capture();
+            await Task.Delay(800);
             BitmapSource? p1 = Capture();
             await Task.Delay(800);
             BitmapSource? p2 = Capture();
-            if (p1 != null && p2 != null)
+            if (p0 != null && p1 != null && p2 != null)
             {
-                double still = Diff(p1, p2, workArea, PanelRect());
-                rep.Check(still < 0.0005, "暂停时画面真的定住了（隔 0.8 秒的两张截屏只有 " + (still * 100).ToString("0.000") + "% 的像素不同；跳舞时隔 0.7 秒是 " + (moving * 100).ToString("0.00") + "%）");
+                RECT pnl = PanelRect();
+                double still = DiffBox(p1, p2, workArea, out RECT box2, pnl);
+                rep.Check(still < 0.0005, "暂停时画面真的定住了（隔 0.8 秒的两张截屏只有 " + (still * 100).ToString("0.000") + "% 的像素不同；跳舞时隔 0.7 秒是 " + (moving * 100).ToString("0.00") + "%）"
+                          + (still > 0 ? "，不同的地方在屏幕 (" + box2.Left + "," + box2.Top + ")-(" + box2.Right + "," + box2.Bottom + ")" : ""));
+                double settle = DiffBox(p0, p1, workArea, out RECT box1, pnl);
+                rep.Soft(settle < 0.0005, "点下暂停半秒时画面就已经定住（和 0.8 秒后的截屏比，" + (settle * 100).ToString("0.000") + "% 的像素不同"
+                         + (settle > 0 ? "；不同的地方在屏幕 (" + box1.Left + "," + box1.Top + ")-(" + box1.Right + "," + box1.Bottom + ")，控制窗口在 (" + pnl.Left + "," + pnl.Top + ")-(" + pnl.Right + "," + pnl.Bottom + ")" : "") + "）");
+                if (settle >= 0.0005 || still >= 0.0005)
+                {
+                    Save(p0, Path.Combine(outDir, "9a-paused-0.5s.png"));
+                    Save(p1, Path.Combine(outDir, "9b-paused-1.3s.png"));
+                    Save(p2, Path.Combine(outDir, "9c-paused-2.1s.png"));
+                }
             }
             else rep.Note("截不到屏，没法核对「暂停时画面定住」");
 
@@ -905,8 +920,13 @@ namespace DesktopDance
         /// 两张截屏在工作区里有多大比例的像素明显不同。exclude 是不算在内的几块（控制窗口开始时和现在所在的位置——
         /// 它的状态文字行数会变，窗口可能变高或被挪过）。尺寸不一样时返回 1。
         /// </summary>
-        static double Diff(BitmapSource a, BitmapSource b, RECT area, params RECT[] exclude)
+        static double Diff(BitmapSource a, BitmapSource b, RECT area, params RECT[] exclude) => DiffBox(a, b, area, out _, exclude);
+
+        /// <summary>同 Diff，另外给出不同的像素落在屏幕上哪一块（box；没有不同时是空的）。</summary>
+        static double DiffBox(BitmapSource a, BitmapSource b, RECT area, out RECT box, params RECT[] exclude)
         {
+            box = default;
+            int bx0 = int.MaxValue, by0 = int.MaxValue, bx1 = -1, by1 = -1;
             if (a.PixelWidth != b.PixelWidth || a.PixelHeight != b.PixelHeight) return 1;
             int w = a.PixelWidth, h = a.PixelHeight, stride = w * 4;
             var pa = new byte[stride * h];
@@ -926,9 +946,17 @@ namespace DesktopDance
                     int i = y * stride + x * 4;
                     int d = Math.Abs(pa[i] - pb[i]) + Math.Abs(pa[i + 1] - pb[i + 1]) + Math.Abs(pa[i + 2] - pb[i + 2]);
                     total++;
-                    if (d > 48) diff++;
+                    if (d > 48)
+                    {
+                        diff++;
+                        if (x < bx0) bx0 = x;
+                        if (y < by0) by0 = y;
+                        if (x > bx1) bx1 = x;
+                        if (y > by1) by1 = y;
+                    }
                 }
             }
+            if (bx1 >= 0) box = new RECT { Left = bx0, Top = by0, Right = bx1 + 1, Bottom = by1 + 1 };
             return total == 0 ? 0 : (double)diff / total;
         }
 
