@@ -165,8 +165,8 @@ namespace DesktopDance
             BitmapSource? shotAfter1 = Shot("8-after-esc.png");
             if (shotBefore != null && shotAfter1 != null)
             {
-                double d = Diff(shotBefore, shotAfter1, work, panelRect);
-                rep.Soft(d < 0.01, "恢复后的画面和开始前一样（工作区里只有 " + (d * 100).ToString("0.00") + "% 的像素不同）");
+                double d = Diff(shotBefore, shotAfter1, work, panelRect, PanelRect());
+                rep.Soft(d < 0.01, "恢复后的画面和开始前一样（工作区里只有 " + (d * 100).ToString("0.00") + "% 的像素不同，控制窗口那一块不算）");
             }
 
             // ---------- 第二轮：「恢复桌面」按钮（图标飞回原位再撤舞台）----------
@@ -212,7 +212,7 @@ namespace DesktopDance
             BitmapSource? shotEnd = Shot("9-after.png");
             if (shotBefore != null && shotEnd != null)
             {
-                double d = Diff(shotBefore, shotEnd, work, panelRect);
+                double d = Diff(shotBefore, shotEnd, work, panelRect, PanelRect());
                 rep.Soft(d < 0.01, "全部结束后的画面和开始前一样（工作区里只有 " + (d * 100).ToString("0.00") + "% 的像素不同）");
             }
 
@@ -285,11 +285,15 @@ namespace DesktopDance
             if (before != null) foreach (var kv in before) sb.AppendLine(kv.Key.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ') + "\t" + kv.Value.X + "\t" + kv.Value.Y);
             File.WriteAllText(Path.Combine(outDir, "positions-before.tsv"), sb.ToString(), new UTF8Encoding(false));
             Shot("k0-before.png");
+            List<Probe> probes = ProbePoints(WorkArea(), panelRect);
+            rep.Note("取了 " + probes.Count + " 个探测点：" + Summary(probes));
             c.Start();
             bool running = await WaitUntil(() => c.State == DanceState.Running, 45);
             rep.Check(running, "开始后进入跳舞状态");
             if (!running) { c.EmergencyRestore(); ExitCode = 1; return; }
             await Task.Delay(3000);
+            rep.Note("舞台窗口层级（程序自己的检查）：" + c.StageLayerNote);
+            LayerCheck(probes, Native.FindWindow(null, StageTitle), "强制结束前");
             Shot("k1-dancing.png");
             rep.Line("正在跳舞，等着被强制结束…");
             File.WriteAllText(Path.Combine(outDir, "hold-ready.txt"), "ready");
@@ -616,8 +620,11 @@ namespace DesktopDance
             return conv;
         }
 
-        /// <summary>两张截屏在工作区里（不算控制窗口那一块）有多大比例的像素明显不同。尺寸不一样时返回 1。</summary>
-        static double Diff(BitmapSource a, BitmapSource b, RECT area, RECT exclude)
+        /// <summary>
+        /// 两张截屏在工作区里有多大比例的像素明显不同。exclude 是不算在内的几块（控制窗口开始时和现在所在的位置——
+        /// 它的状态文字行数会变，窗口可能变高或被挪过）。尺寸不一样时返回 1。
+        /// </summary>
+        static double Diff(BitmapSource a, BitmapSource b, RECT area, params RECT[] exclude)
         {
             if (a.PixelWidth != b.PixelWidth || a.PixelHeight != b.PixelHeight) return 1;
             int w = a.PixelWidth, h = a.PixelHeight, stride = w * 4;
@@ -631,7 +638,10 @@ namespace DesktopDance
             {
                 for (int x = x0; x < x1; x++)
                 {
-                    if (x >= exclude.Left - 8 && x < exclude.Right + 8 && y >= exclude.Top - 8 && y < exclude.Bottom + 8) continue;
+                    bool skip = false;
+                    foreach (RECT ex in exclude)
+                        if (x >= ex.Left - 8 && x < ex.Right + 8 && y >= ex.Top - 8 && y < ex.Bottom + 8) { skip = true; break; }
+                    if (skip) continue;
                     int i = y * stride + x * 4;
                     int d = Math.Abs(pa[i] - pb[i]) + Math.Abs(pa[i + 1] - pb[i + 1]) + Math.Abs(pa[i + 2] - pb[i + 2]);
                     total++;

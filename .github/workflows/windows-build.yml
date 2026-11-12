@@ -114,6 +114,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 8
         run: |
+          # 这台机器的桌面上开着一个终端窗口，会挡住大半个桌面。先把所有窗口最小化，
+          # 这样截屏里能看到图标真的在跳，「舞台盖住了桌面」「恢复后画面和开始前一样」也能在整个桌面上核对。
+          # （只是这台测试机上的操作；程序本身不会去动别的窗口。）
+          try { (New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep -Seconds 2 } catch { "MinimizeAll failed: $_" }
           $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest', 'livetest-out' -PassThru
           $null = $p.Handle
           if ($p.WaitForExit(200000)) { $code = $p.ExitCode } else { "200 秒没跑完，结束它"; Stop-Process -Id $p.Id -Force; $code = 2 }
@@ -134,6 +138,8 @@ jobs:
         shell: pwsh
         timeout-minutes: 6
         run: |
+          # 这一轮把刚才最小化的窗口放回来：顺便核对有别的窗口开着时，舞台待在它们下面、不盖住它们。
+          try { (New-Object -ComObject Shell.Application).UndoMinimizeAll(); Start-Sleep -Seconds 2 } catch { "UndoMinimizeAll failed: $_" }
           Remove-Item livetest-out/hold-ready.txt -ErrorAction SilentlyContinue
           $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest-hold', 'livetest-out' -PassThru
           $null = $p.Handle
