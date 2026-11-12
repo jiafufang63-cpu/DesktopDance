@@ -18,9 +18,17 @@ namespace DesktopDance
             if (args.Length >= 1 && args[0] == "--selftest")
                 return SelfTest.Run(args.Length >= 2 ? args[1] : "selftest-out");
 
+            // 实跑测试（见 LiveTest.cs）：--livetest / --livetest-hold 和平时一样把程序开起来，再由脚本代替人去点；
+            // --livetest-after 是上一个进程被强制结束之后做复核，不开窗口。
+            string liveDir = args.Length >= 2 ? args[1] : "livetest-out";
+            if (args.Length >= 1 && args[0] == "--livetest-after") return LiveTest.AfterKill(liveDir);
+            bool liveHold = args.Length >= 1 && args[0] == "--livetest-hold";
+            bool live = liveHold || (args.Length >= 1 && args[0] == "--livetest");
+
             // 界面语言：用户在控制窗口里选过就用选的；没选过，系统是中文用中文，否则英文。
             // 测试用：--lang zh|en 只对这一次启动生效，不会被记住。
             Settings settings = Settings.Load();
+            if (live) settings.NoSave = true;
             string langFrom = "系统语言";
             Lang lang = L.SystemDefault();
             if (L.Parse(settings.Language) is Lang saved) { lang = saved; langFrom = "上次选的"; }
@@ -31,6 +39,7 @@ namespace DesktopDance
             using var mutex = new Mutex(true, "Local\\DesktopDance-single-instance-7d0c1b0e", out bool first);
             if (!first)
             {
+                if (live) return 4;          // 测试时不弹窗（没人去点「确定」）
                 MessageBox.Show(L.T("DesktopDance 已经在运行了，看看屏幕左下角或任务栏。", "DesktopDance is already running. Look at the bottom-left corner of the screen, or the taskbar."),
                                 "DesktopDance", MessageBoxButton.OK, MessageBoxImage.Information);
                 return 0;
@@ -78,10 +87,11 @@ namespace DesktopDance
             var panel = new PanelWindow(controller, settings);
             panel.Show();
             controller.RefreshCatalog();
+            LiveTest? test = live ? LiveTest.Attach(app, controller, panel, liveDir, liveHold) : null;
             int code = app.Run();
             controller.HotKeys.Stop();
             Log.Write("退出");
-            return code;
+            return test != null ? test.ExitCode : code;
         }
     }
 }

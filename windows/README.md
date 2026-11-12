@@ -15,8 +15,8 @@
 
 需要 64 位的 Windows 10（1809 或更新）或 Windows 11。
 
-1. 点这里直接下载：[DesktopDance-win.exe](../../../releases/latest/download/DesktopDance-win.exe)
-   （或者到本仓库的 [Releases](../../../releases/latest) 页面找 `DesktopDance-win.exe`）。
+1. 点这里直接下载：[DesktopDance-win.exe](https://github.com/jiafufang63-cpu/DesktopDance/releases/download/win-v1.0/DesktopDance-win.exe)
+   （或者到本仓库的 [Releases](https://github.com/jiafufang63-cpu/DesktopDance/releases) 页面找 `DesktopDance-win.exe`）。
 2. 文件大约 60～80 MB——里面自带了运行库，所以**不用**另外安装 .NET 之类的东西。放在哪个文件夹都行。
 
 ## 第一次打开
@@ -35,7 +35,6 @@
 | --- | --- |
 | 开始蹦迪 / 暂停 / 恢复桌面 | 开始、暂停、图标飞回原位并撤掉舞台 |
 | 模式 | 打篮球（默认）、列队、律动、自由；勾「自动切换」会轮流播 |
-| 舞台 | 全屏，或居中的 9:16 竖屏（带取景框四个角，录屏时对着框选） |
 | 篮球 | 「打篮球」里用哪个图标当球。默认是第一个图标 |
 | 跟着电脑正在播放的音乐跳 | 默认勾上。不勾或没声音时按内置的 120 拍跳 |
 | 速度 / 幅度 / 数量 | 舞步快慢、摆动大小、图标总数（跳舞中拖完松手，过一两秒图标会按新数量重新排一次）。打篮球里「幅度」是动作夸张程度：默认位置是原样，越大手脚挥得越开（为了不出画，小人会相应缩小一些） |
@@ -83,7 +82,7 @@ Windows 版目前只在作者的一台 Windows 10 笔记本上跑过。下面这
 - 150%、200% 等缩放比例，以及 4K 屏上的流畅度
 - 商店应用（计算器、照片…）的图标借来显示时好不好看
 - 英文界面（English）：是后加的，字有没有被截掉、切换是否顺畅，还没在真机上看过
-- Windows 11（一次都还没跑过）
+- Windows 11（还没有在真的 Windows 11 电脑上跑过。每次构建时，GitHub 的 Windows 机器会自动实跑一轮，见下面「从源码构建」里的 LiveTest；那台机器是服务器版 Windows，和 Windows 11 同一代，但不能代替真机，也测不了声音）
 
 测试步骤见 [TESTING.md](TESTING.md)。
 
@@ -92,7 +91,7 @@ Windows 版目前只在作者的一台 Windows 10 笔记本上跑过。下面这
 按 `Esc`。如果想告诉作者哪里不对，请带上日志文件：
 
 1. 按 `Win+R`，粘贴 `%LocalAppData%\DesktopDance` 回车。
-2. 里面的 `desktop-dance.log` 就是日志（只记录程序自己做了什么，不含你的文件内容；会包含桌面图标的名字）。
+2. 里面的 `desktop-dance.log` 就是日志（只记录程序自己做了什么，不含文件内容；但会有桌面图标的名字和壁纸文件的路径，路径里通常带你的电脑用户名。公开贴出来之前可以先把这些抹掉）。
 
 同一个文件夹里的 `settings.json` 记着上次选的篮球、两个勾选项和界面语言，删掉就恢复默认。日志始终是中文，不随界面语言变。
 
@@ -124,12 +123,13 @@ dotnet publish windows/DesktopDance.csproj -c Release -r win-x64 --self-containe
 | [src/Controller.cs](src/Controller.cs) | 开始 / 暂停 / 恢复的总控 |
 | [src/Panel.cs](src/Panel.cs) | 控制窗口 |
 | [src/HotKeys.cs](src/HotKeys.cs) | `Esc` 热键 |
-| [src/SelfTest.cs](src/SelfTest.cs) | 自检（`DesktopDance.exe --selftest 输出文件夹`） |
+| [src/SelfTest.cs](src/SelfTest.cs) | 自检（`DesktopDance.exe --selftest 输出文件夹`）：只算不开窗口 |
+| [src/LiveTest.cs](src/LiveTest.cs) | 实跑测试（`DesktopDance.exe --livetest 输出文件夹`）：真的开始跳、换模式、再用按 Esc / 「恢复桌面」/ 点桌面各恢复一次，每次核对舞台窗口没了、图标位置没变。只有这个测试模式会截屏和模拟按键、鼠标点击；平时运行的程序不做这些事 |
 
 ## 致谢与许可证
 
 创意来自 LXG 的 Windows 软件「桌面蹦迪」。那个软件没有公开源码；这里是用 C# 从零写的独立实现，没有使用它的任何代码或文件。
 
-听系统声音用了开源库 [NAudio](https://github.com/naudio/NAudio)（MIT 许可）。
+听系统声音用了第三方库 [NAudio](https://github.com/naudio/NAudio)（MIT 许可，声明全文见 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)）。
 
 © 2026 Jennifer Fang。采用 [PolyForm Noncommercial 1.0.0](../LICENSE) 许可：个人和非商业用途可以免费使用、修改、分享，需保留署名和许可说明；**不允许任何商业用途**。需要商业授权请在本仓库提 Issue 联系作者。

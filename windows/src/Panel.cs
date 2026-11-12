@@ -19,9 +19,6 @@ namespace DesktopDance
         readonly Button restoreBtn = new Button();
         readonly ComboBox modeBox = new ComboBox();
         readonly CheckBox autoChk = new CheckBox();
-        readonly RadioButton fullRadio = new RadioButton { GroupName = "stage", IsChecked = true };
-        readonly RadioButton portraitRadio = new RadioButton { GroupName = "stage" };
-        readonly CheckBox guideChk = new CheckBox();
         readonly ComboBox ballBox = new ComboBox();
         readonly CheckBox sysChk = new CheckBox();
         readonly Slider speedSlider = new Slider { Minimum = 0.5, Maximum = 2, Value = 1 };
@@ -37,7 +34,7 @@ namespace DesktopDance
         readonly TextBlock sysText = new TextBlock { TextWrapping = TextWrapping.Wrap };
         readonly TextBlock hideText = new TextBlock { TextWrapping = TextWrapping.Wrap };
         // 每一行左边的小标题（模式 / 舞台 / …）
-        readonly TextBlock capMode = Caption(), capStage = Caption(), capBall = Caption(), capSpeed = Caption(),
+        readonly TextBlock capMode = Caption(), capBall = Caption(), capSpeed = Caption(),
                            capAmp = Caption(), capCount = Caption(), capLang = Caption();
         bool updating;
         bool hideUnsupported;
@@ -121,14 +118,8 @@ namespace DesktopDance
             autoChk.VerticalAlignment = VerticalAlignment.Center;
             autoChk.Click += (s, e) => { c.AutoSwitch = autoChk.IsChecked == true; Refresh(); };
 
-            fullRadio.VerticalAlignment = VerticalAlignment.Center;
-            fullRadio.Margin = new Thickness(0, 0, 10, 0);
-            portraitRadio.VerticalAlignment = VerticalAlignment.Center;
-            portraitRadio.Margin = new Thickness(0, 0, 12, 0);
-            fullRadio.Click += (s, e) => { c.Portrait = false; Refresh(); };
-            portraitRadio.Click += (s, e) => { c.Portrait = true; Refresh(); };
-            guideChk.VerticalAlignment = VerticalAlignment.Center;
-            guideChk.Click += (s, e) => { c.ShowGuide = guideChk.IsChecked == true; Refresh(); };
+            // 以前这里有一行「舞台」（全屏 / 9:16 竖屏 + 取景框），已经拿掉：固定用全屏。
+            // 竖屏排版的代码还在 DanceController.Portrait / Choreographer 里，只是界面上不再露出。
 
             ballBox.Width = 250;
             ballBox.SelectionChanged += (s, e) =>
@@ -188,7 +179,6 @@ namespace DesktopDance
             var stack = new StackPanel { Margin = new Thickness(16, 14, 16, 14) };
             stack.Children.Add(Row(startBtn, pauseBtn, restoreBtn));
             stack.Children.Add(Row(capMode, modeBox, autoChk));
-            stack.Children.Add(Row(capStage, fullRadio, portraitRadio, guideChk));
             stack.Children.Add(Row(capBall, ballBox));
             stack.Children.Add(sysChk);
             stack.Children.Add(SliderRow(capSpeed, speedSlider));
@@ -214,22 +204,18 @@ namespace DesktopDance
                 bool zh = L.Current == Lang.Zh;
                 // 英文的小标题更长（Language），窗口和小标题都放宽一点
                 Width = zh ? 340 : 360;
-                foreach (TextBlock cap in new[] { capMode, capStage, capBall, capSpeed, capAmp, capCount, capLang }) cap.Width = zh ? 38 : 62;
+                foreach (TextBlock cap in new[] { capMode, capBall, capSpeed, capAmp, capCount, capLang }) cap.Width = zh ? 38 : 62;
                 ballBox.Width = zh ? 250 : 236;
 
                 pauseBtn.Content = L.T("暂停", "Pause");
                 restoreBtn.Content = L.T("恢复桌面", "Restore");
                 autoChk.Content = L.T("自动切换", "Auto switch");
-                fullRadio.Content = L.T("全屏", "Full screen");
-                portraitRadio.Content = L.T("9:16 竖屏", "9:16");
-                guideChk.Content = L.T("取景框", "Guides");
                 labelChk.Content = L.T("图标名称", "Names");
                 sysText.Text = L.T("跟着电脑正在播放的音乐跳", "Follow the music playing on this PC");
                 hideText.Text = L.T("截屏 / 录屏时隐藏本窗口", "Hide this window from screenshots / recordings");
                 hint.Text = L.T("Esc：立刻恢复桌面", "Press Esc to restore instantly");
 
                 capMode.Text = L.T("模式", "Mode");
-                capStage.Text = L.T("舞台", "Stage");
                 capBall.Text = L.T("篮球", "Ball");
                 capSpeed.Text = L.T("速度", "Speed");
                 capAmp.Text = L.T("幅度", "Size");
@@ -266,6 +252,9 @@ namespace DesktopDance
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(KeepOnScreen));
         }
 
+        /// <summary>只给实跑测试用：和用户在「语言」下拉里选了一项是同一条路。</summary>
+        public void SelfTestSwitchLanguage(Lang lang) => SetLanguage(lang);
+
         /// <summary>放在主屏左下角（任务栏上方），不挡队形。</summary>
         void PlaceBottomLeft()
         {
@@ -298,10 +287,6 @@ namespace DesktopDance
                 restoreBtn.IsEnabled = st != DanceState.Idle;
                 modeBox.SelectedIndex = Array.IndexOf(DanceModes.All, c.Mode);
                 autoChk.IsChecked = c.AutoSwitch;
-                fullRadio.IsChecked = !c.Portrait;
-                portraitRadio.IsChecked = c.Portrait;
-                guideChk.IsChecked = c.ShowGuide;
-                guideChk.IsEnabled = c.Portrait;
                 labelChk.IsChecked = c.ShowLabels;
                 sysChk.IsChecked = c.UseSystemAudio;
                 countLabel.Text = c.TargetCount.ToString();

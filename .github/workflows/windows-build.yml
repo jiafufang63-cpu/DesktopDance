@@ -1,13 +1,16 @@
 # 在 GitHub 的 Windows 机器上生成 Windows 版 exe。不需要自己有 Windows 构建环境，也不需要任何额外的密钥。
 #
 # - 每次推送到 main（改了 windows/ 或动作数据时）、或在 Actions 页面手动点 Run workflow：
-#   生成 exe，跑一遍自检，结果放在这次运行页面底部的 Artifacts 里（DesktopDance-win）。
-#   自检通过后，还会把 exe 换到测试版 Release（win-test-1）上——README 里的下载按钮指的就是它，
+#   生成 exe，跑一遍自检，再在这台机器的桌面上真的跑一轮（开始跳、恢复、强制结束），
+#   结果放在这次运行页面底部的 Artifacts 里（DesktopDance-win、selftest、livetest）。
+#   都通过后，还会把 exe 换到 win-v1.0 这个 Release 上——README 里的下载按钮指的就是它，
 #   所以按钮给出的永远是 main 上最新的一版。
 # - 推送 v 开头的标签（例如 v0.1.0）：同上，并且把 exe 以 DesktopDance-win.exe 这个名字挂到同名 Release 上。
-#   于是固定下载地址生效：
-#   https://github.com/<账号>/<仓库>/releases/latest/download/DesktopDance-win.exe
-name: Windows 版构建
+#   下载地址是 https://github.com/<账号>/<仓库>/releases/download/<标签>/DesktopDance-win.exe
+#   （只有当那个 Release 不是「预发布」时，.../releases/latest/download/DesktopDance-win.exe 才会指向它。）
+#
+# 工作流和各步骤的名字用英文（Actions 页面谁都看得到）；注释是中文。
+name: Windows build
 
 on:
   push:
@@ -25,7 +28,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # 只用来在打标签时创建 Release 并上传 exe
+  contents: write   # 用来往 Release 上传 exe：main 每次构建通过后更新 win-v1.0 里的那个；打 v 标签时创建同名 Release 并上传
 
 concurrency:
   group: windows-build-${{ github.ref }}
@@ -42,7 +45,8 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: 生成单文件 exe（自带运行库，不用安装 .NET）
+      # 生成单文件 exe（自带运行库，不用安装 .NET）
+      - name: Publish single-file exe (self-contained, no .NET install needed)
         shell: pwsh
         run: >
           dotnet publish windows/DesktopDance.csproj
@@ -53,7 +57,8 @@ jobs:
           -p:DebugType=none
           -o publish
 
-      - name: 改名并算校验值
+      # 改名并算校验值
+      - name: Rename and compute SHA256
         shell: pwsh
         run: |
           Copy-Item publish/DesktopDance.exe DesktopDance-win.exe
@@ -61,19 +66,19 @@ jobs:
           "大小：{0:N1} MB" -f ($f.Length / 1MB)
           $hash = (Get-FileHash DesktopDance-win.exe -Algorithm SHA256).Hash
           "SHA256：$hash"
-          "### Windows 版构建完成`n`n- 大小：{0:N1} MB`n- SHA256：``{1}``" -f ($f.Length / 1MB), $hash >> $env:GITHUB_STEP_SUMMARY
+          "### Windows build`n`n- Size: {0:N1} MB`n- SHA256: ``{1}``" -f ($f.Length / 1MB), $hash >> $env:GITHUB_STEP_SUMMARY
 
-      - name: 上传 exe（Artifacts）
+      - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: DesktopDance-win
           path: DesktopDance-win.exe
           if-no-files-found: error
-          retention-days: 7   # 私有仓库的存储额度很小（免费 500 MB），测试用的 exe 留一周就够
+          retention-days: 7   # 测试用的 exe 留一周就够
 
       # 自检：纯计算部分（动作数据、四种队形、节拍检测）必须通过；
-      # 读桌面 / 取图标 / 铺壁纸 / 离屏画图只做记录。窗口、热键、声音不在这里测。
-      - name: 自检
+      # 读桌面 / 取图标 / 铺壁纸 / 离屏画图只做记录。窗口、热键在后面的「实跑测试」里测；声音测不了。
+      - name: Self-test (logic checks and off-screen renders)
         id: selftest
         shell: pwsh
         timeout-minutes: 6
@@ -81,7 +86,7 @@ jobs:
           $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--selftest', 'selftest-out' -Wait -PassThru
           if (Test-Path selftest-out/selftest.txt) {
             Get-Content selftest-out/selftest.txt -Encoding UTF8
-            "### 自检`n`n``````" >> $env:GITHUB_STEP_SUMMARY
+            "### Self-test`n`n``````" >> $env:GITHUB_STEP_SUMMARY
             Get-Content selftest-out/selftest.txt -Encoding UTF8 >> $env:GITHUB_STEP_SUMMARY
             "``````" >> $env:GITHUB_STEP_SUMMARY
           } else {
@@ -90,7 +95,7 @@ jobs:
           "退出码：$($p.ExitCode)"
           if ($p.ExitCode -ne 0) { exit 1 }
 
-      - name: 上传自检报告和渲染图
+      - name: Upload self-test report and renders
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -99,18 +104,91 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # README 的「下载 Windows 版」按钮指向 win-test-1 这个 Release。main 上每次构建并自检通过后，
+      # 实跑测试：在这台机器的桌面上真的把程序开起来，由脚本代替人去点（见 windows/src/LiveTest.cs）。
+      # 开始跳 → 换四个模式 → 跳舞中换语言、换数量 → 按 Esc / 「恢复桌面」/ 点桌面 各恢复一次。
+      # 「算失败」的只有安全相关的几条：能开始、能恢复、恢复后舞台窗口没了、每个桌面图标的位置和开始前一样。
+      # 其余（舞台是不是正好垫在桌面图标上面、模拟的 Esc 有没有生效、画面比对）只做记录。
+      # 这台机器是服务器版 Windows，和 Windows 11 同一代；它不能代替在真的 Windows 11 电脑上试，
+      # 也测不了声音（没有在放歌）和第一次打开时的安全提示。
+      - name: Live test (really start dancing, then restore three ways)
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest', 'livetest-out' -PassThru
+          $null = $p.Handle
+          if ($p.WaitForExit(200000)) { $code = $p.ExitCode } else { "200 秒没跑完，结束它"; Stop-Process -Id $p.Id -Force; $code = 2 }
+          if (Test-Path livetest-out/livetest.txt) {
+            Get-Content livetest-out/livetest.txt -Encoding UTF8
+            "### Live test`n`n``````" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content livetest-out/livetest.txt -Encoding UTF8 >> $env:GITHUB_STEP_SUMMARY
+            "``````" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "没有生成实跑测试报告（程序可能没能启动）"
+          }
+          "退出码：$code"
+          if ($code -ne 0) { exit 1 }
+
+      # 跳舞中强制结束进程（等于在任务管理器里点「结束任务」），然后另起一个进程核对：
+      # 舞台窗口没了、每个桌面图标的位置和开始前一样。
+      - name: Live test (kill the process mid-dance, desktop must be unchanged)
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          Remove-Item livetest-out/hold-ready.txt -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest-hold', 'livetest-out' -PassThru
+          $null = $p.Handle
+          $deadline = (Get-Date).AddSeconds(100)
+          while (-not (Test-Path livetest-out/hold-ready.txt) -and -not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
+          if (-not (Test-Path livetest-out/hold-ready.txt)) {
+            "程序没有进入跳舞状态"
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+            if (Test-Path livetest-out/livetest-hold.txt) { Get-Content livetest-out/livetest-hold.txt -Encoding UTF8 }
+            exit 1
+          }
+          Stop-Process -Id $p.Id -Force
+          $null = $p.WaitForExit(15000)
+          "已在跳舞中强制结束进程 $($p.Id)"
+          $q = Start-Process -FilePath .\DesktopDance-win.exe -ArgumentList '--livetest-after', 'livetest-out' -Wait -PassThru
+          if (Test-Path livetest-out/livetest-kill.txt) {
+            Get-Content livetest-out/livetest-kill.txt -Encoding UTF8
+            "### Check after killing the process mid-dance`n`n``````" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content livetest-out/livetest-kill.txt -Encoding UTF8 >> $env:GITHUB_STEP_SUMMARY
+            "``````" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "没有生成复核报告"
+          }
+          "退出码：$($q.ExitCode)"
+          if ($q.ExitCode -ne 0) { exit 1 }
+
+      - name: Upload live-test report, screenshots and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: livetest
+          path: livetest-out
+          if-no-files-found: warn
+          retention-days: 7
+
+      # README 的「下载 Windows 版」按钮指向 win-v1.0 这个 Release。main 上每次构建，自检和实跑测试都通过后，
       # 用新的 exe 换掉里面那个旧的。不想自动更新时，删掉这一步即可。
-      - name: 更新测试版下载（win-test-1）
+      # 这一步只往已有的 Release 里上传；Release 还没建（或被删了）就跳过，不让构建变红。
+      - name: Update the download (release win-v1.0)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload win-test-1 DesktopDance-win.exe --repo "${{ github.repository }}" --clobber
+          gh release view win-v1.0 --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            "Release win-v1.0 does not exist yet; skipping the upload."
+            exit 0
+          }
+          gh release upload win-v1.0 DesktopDance-win.exe --repo "${{ github.repository }}" --clobber
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          "Uploaded DesktopDance-win.exe to release win-v1.0."
 
-      - name: 挂到 Release（只在推送 v 标签时）
+      # 挂到 Release（只在推送 v 标签时）
+      - name: Attach exe to the tagged release (v* tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:

@@ -41,7 +41,7 @@ namespace DesktopDance
             catch (Exception ex) { Line("探测抛出异常：" + ex); }
             try { Render(outDir, res, clip); }
             catch (Exception ex) { Line("离屏渲染抛出异常：" + ex); }
-            try { PanelProbe(outDir); }
+            try { PanelProbe(outDir, res); }
             catch (Exception ex) { Line("控制窗口排版探测抛出异常：" + ex); }
             L.Current = Lang.Zh;
 
@@ -232,10 +232,17 @@ namespace DesktopDance
         /// 不显示窗口，把控制窗口按中文、英文各排一遍版，各存一张图（panel-zh.png / panel-en.png），
         /// 并记下有没有哪一行比窗口宽。只记录，不算通过或失败——真正显示出来什么样还是要在 Windows 上看。
         /// </summary>
-        static void PanelProbe(string outDir)
+        static void PanelProbe(string outDir, LoadResult? res)
         {
             var controller = new DanceController(Dispatcher.CurrentDispatcher);
-            var panel = new PanelWindow(controller, new Settings());
+            var panel = new PanelWindow(controller, new Settings { NoSave = true });
+            // 把刚才探测到的桌面图标告诉它，这样图上的状态文字和篮球菜单就是这台机器上「就绪」时真正会显示的样子
+            if (res != null)
+            {
+                var cat = new NameCatalog();
+                foreach (DancerItem it in res.Items) (it.IsGuest ? cat.Guests : cat.Desktop).Add(it.Name);
+                controller.SelfTestSetCatalog(cat);
+            }
             foreach (Lang lg in new[] { Lang.Zh, Lang.En })
             {
                 var notes = new List<string>();

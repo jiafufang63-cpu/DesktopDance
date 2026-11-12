@@ -181,6 +181,7 @@ namespace DesktopDance
         public bool FollowSystemAudio = true;
         public bool HidePanelFromCapture = false;
         public string Language = "";              // "zh" / "en"；空 = 还没选过，跟系统语言
+        public bool NoSave;                       // 实跑测试时设为 true：测试期间不往设置文件里写任何东西
 
         public static Settings Load()
         {
@@ -202,6 +203,7 @@ namespace DesktopDance
 
         public void Save()
         {
+            if (NoSave) return;
             try
             {
                 using var ms = new MemoryStream();

@@ -132,6 +132,8 @@ namespace DesktopDance
         /// <summary>舞台窗口现在是不是盖在桌面上（热键线程会读）。</summary>
         public bool StageUp => stageUp;
         public int Bpm => (int)M.Round(clock.Bpm);
+        /// <summary>舞台窗口开出来后自己检查到的层级情况（中文，给日志和实跑测试看）。</summary>
+        public string StageLayerNote => stage?.LayerNote ?? "";
         public int GuestCount => Math.Max(0, items.Count - DesktopCount);
 
         void SetState(DanceState s) { State = s; Changed?.Invoke(); }
@@ -538,6 +540,15 @@ namespace DesktopDance
                     Changed?.Invoke();
                 }));
             });
+        }
+
+        /// <summary>只给自检用：直接告诉它桌面上有哪些图标（平时是 RefreshCatalog 在后台读出来的），好让控制窗口显示成「就绪」的样子。</summary>
+        public void SelfTestSetCatalog(NameCatalog cat)
+        {
+            Catalog = cat;
+            CatalogLoaded = true;
+            CatalogChanged?.Invoke();
+            Changed?.Invoke();
         }
 
         /// <summary>可以当篮球的图标名字（给控制窗口的下拉菜单用）。</summary>
