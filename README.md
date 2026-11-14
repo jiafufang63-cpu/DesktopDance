@@ -24,7 +24,7 @@ Click a button and the download starts. No sign-up, no login.
 
 - **Not sure which computer you have?** An Apple logo in the top-left corner of the screen means Mac; a four-square logo at the bottom of the screen means Windows.
 - **Mac** needs macOS 14.2 or later. To check: click the Apple logo in the top-left corner → "About This Mac".
-- **Windows** needs 64-bit Windows 10 or Windows 11. It has been tested on Windows 10; Windows 11 has not been tried yet, so if you hit a problem please [tell me here](https://github.com/jiafufang63-cpu/DesktopDance/issues/new) (needs a free GitHub account).
+- **Windows** needs 64-bit Windows 10 or Windows 11. It has been tested by hand on a Windows 10 laptop, and every build is run automatically (start, every control, restore) on a machine of the Windows 11 generation. It has not been tried by hand on a Windows 11 PC yet, so if you hit a problem please [tell me here](https://github.com/jiafufang63-cpu/DesktopDance/issues/new) (needs a free GitHub account).
 
 The app's own window is available in English and Chinese on both Mac and Windows. It follows your system language the first time; you can switch at the bottom of the window (**Language**).
 

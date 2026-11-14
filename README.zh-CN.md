@@ -24,7 +24,7 @@
 
 - **不知道自己是哪种电脑？** 屏幕左上角有苹果图标的是 Mac；屏幕下方有四个小方块图标的是 Windows。
 - **Mac** 需要系统是 macOS 14.2 或更新。查看方法：点屏幕左上角的苹果图标 → 「关于本机」。
-- **Windows** 需要 64 位的 Windows 10 或 Windows 11。已在 Windows 10 上实测过；Windows 11 还没试过，遇到问题请[在这里留言告诉我](https://github.com/jiafufang63-cpu/DesktopDance/issues/new)（需要一个免费的 GitHub 账号）。
+- **Windows** 需要 64 位的 Windows 10 或 Windows 11。已在一台 Windows 10 笔记本上亲手测过；每次构建还会在一台和 Windows 11 同一代系统的机器上自动跑一遍（开始、逐项操作、恢复）。还没有人在 Windows 11 电脑上亲手试过，遇到问题请[在这里留言告诉我](https://github.com/jiafufang63-cpu/DesktopDance/issues/new)（需要一个免费的 GitHub 账号）。
 
 ## Mac：怎么打开（只有第一次要多点几下）
 
